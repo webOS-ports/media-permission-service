@@ -1,0 +1,14 @@
+{
+	"role": {
+		"allowedNames": ["com.palm.mediapermissions"],
+		"type": "regular",
+		"exeName": "js"
+	},
+	"permissions": [
+		{
+			"inbound": ["*"],
+			"outbound": ["*"],
+			"service": "com.palm.mediapermissions"
+		}
+	]
+}

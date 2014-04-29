@@ -1,0 +1,13 @@
+[
+	{
+		"type": "db.kind",
+		"object": "com.palm.media.permissions:1",
+		"caller": "com.palm.mediapermissions",
+		"operations": {
+			"read": "allow",
+			"create": "allow",
+			"delete": "allow",
+			"update": "allow"
+		}
+	}
+]
