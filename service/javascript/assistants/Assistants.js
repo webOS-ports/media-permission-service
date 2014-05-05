@@ -92,7 +92,7 @@ var currentMaxId = 0;
 var sessions = [];
 
 function callUI(appId, rights) {
-    var uiFuture = PalmCall.call("org.webosports.luna", "publishToSystemUI", {
+    var uiFuture = PalmCall.call("palm://org.webosports.luna", "publishToSystemUI", {
         event: "mediaFilePermissionRequest",
         message: {
             action: 'requestPermission',
