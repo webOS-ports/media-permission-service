@@ -77,11 +77,11 @@ function addPermissions(appId, kinds, index) {
             if (result.returnValue === true) {
                 future.nest(addPermissions(appId, kinds, index + 1));
             } else {
-                throw "putPermissions failed. " + JSON.stringify(result);
+                throw result;
             }
         } catch (e) {
             log("Error in putPermissions: ", e);
-            future.result = { returnValue: false };
+            future.result = { returnValue: false, reason: e };
         }
     });
 
@@ -120,7 +120,7 @@ function callUI(appId, rights) {
         } catch (e) {
             log("Error in UI call: ", e);
             log("Waiking up request call with error.");
-            
+
             //work around for not yet existing UI part:
             if (e.response && e.response.errorText && e.response.errorText.indexOf("Unknown method") === 0) {
                 log("UI Part not yet finished, emulating truthy result.");
@@ -143,18 +143,23 @@ function callUI(appId, rights) {
 var RequestAssistant = function () {};
 
 RequestAssistant.prototype.run = function (outerfuture) {
-    var args = this.controller.args, future, appId, query, requiredRights, dbObj;
+    var args = this.controller.args, future, appId, query, requiredRights, dbObj, i;
+
+    function fail(reason) {
+        log("Failing because: ", reason);
+        outerfuture.result = { returnValue: false, isAllowed: false, reason: reason};
+        return outerfuture;
+    }
 
     appId = getAppId(this.controller);
     if (!appId) {
-        outerfuture.result = {returnValue: false, isAllowed: false, reason: "Could not determine appId."};
-        return outerfuture;
+        return fail("Could not determine appId.");
     }
 
     if (!args.rights || !args.rights.read || !args.rights.read.length) { //kind of hack here, just check for length field in array.
                                                                          //rejects empty arrays, too, but I think that's fine.
-        outerfuture.result = {returnValue: false, isAllowed: false, reason: "Require rights parameter with member read as string array containing kinds to request read access to."};
-        return outerfuture;
+        return fail("Require rights parameter with member read as string array containing kinds to request read access to.");
+    }
     }
 
     query = {
@@ -181,7 +186,7 @@ RequestAssistant.prototype.run = function (outerfuture) {
                     throw "No or too many permission sets for appId " + appId;
                 }
             } else {
-                throw "DB lookup not successful " + printObj(future.exception);
+                throw future.exception;
             }
 
         } catch (e) {
@@ -221,8 +226,7 @@ RequestAssistant.prototype.run = function (outerfuture) {
                 throw result.reason || "User denied access.";
             }
         } catch (e) {
-            log("Asking user for permission failed: ", e);
-            outerfuture.result = {returnValue: false, isAllowed: false, reason: JSON.stringify(e)};
+            fail("Asking user for permission failed: " + printObj(e));
         }
     });
 
@@ -233,11 +237,10 @@ RequestAssistant.prototype.run = function (outerfuture) {
                 //ok, all permissions where set ok. Continue. :)
                 future.nest(DB.merge([dbObj]));
             } else {
-                throw "Setting permissions failed: " + JSON.stringify(result);
+                throw result;
             }
         } catch (e) {
-            log("Error during setting permissions", e);
-            outerfuture.result = {returnValue: false, isAllowed: false, reason: JSON.stringify(e)};
+            fail("Error during setting permissions " + printObj(e));
         }
     });
 
@@ -247,11 +250,10 @@ RequestAssistant.prototype.run = function (outerfuture) {
             if (result.returnValue === true) {
                 outerfuture.result = {returnValue: true, isAllowed: true }; //finally. :)
             } else {
-                throw "Something went wrong: " + JSON.stringify(result);
+                throw result;
             }
         } catch (e) {
-            log("Error during remembering permissions: ", e);
-            outerfuture.result = {returnValue: false, isAllowed: false, reason: JSON.stringify(e)};
+            fail("Error during remembering permissions: " + printObj(e));
         }
     });
 
