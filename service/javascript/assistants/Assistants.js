@@ -120,7 +120,14 @@ function callUI(appId, rights) {
         } catch (e) {
             log("Error in UI call: ", e);
             log("Waiking up request call with error.");
-            outerFuture.result = {returnValue: false};
+            
+            //work around for not yet existing UI part:
+            if (e.response && e.response.errorText && e.response.errorText.indexOf("Unknown method") === 0) {
+                log("UI Part not yet finished, emulating truthy result.");
+                PalmCall.call("palm://com.palm.mediapermissions", "permissionsResponse", {sessionId: id});
+            } else {
+                outerFuture.result = {returnValue: false};
+            }
         }
     });
 
