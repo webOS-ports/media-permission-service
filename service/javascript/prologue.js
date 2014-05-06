@@ -15,6 +15,14 @@ var dummy = function () {};
 
 var printObj = function (obj, depth) {
     var key, msg = "{";
+    if (!depth) {
+        depth = 0;
+    }
+
+    if (typeof obj === "string") {
+        return obj;
+    }
+
     if (depth < 5) {
         for (key in obj) {
             if (obj.hasOwnProperty(key)) {
