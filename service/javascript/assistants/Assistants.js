@@ -54,7 +54,7 @@ function addPermissions(appId, kinds, index) {
     if (!index) {
         index = 0;
     }
-    if (index >= kinds.length) {
+    if (index >= kinds.read.length) {
         return new Future({returnValue: true});
     }
     if (!kinds[index]) {
@@ -64,7 +64,7 @@ function addPermissions(appId, kinds, index) {
     var future = PalmCall.call("palm://com.palm.db", "putPermissions", {
         permissions: [{
             type: 'db.kind',
-            object: kinds[index],
+            object: kinds.read[index],
             caller: appId,
             operations: {read: 'allow'}
         }]
