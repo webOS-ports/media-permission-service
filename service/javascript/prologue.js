@@ -69,7 +69,7 @@ var log = logBase;
 var debug = log;
 
 process.on("uncaughtException", function (e) {
-	log("Uncaought error:" + e.stack);
-	//throw e;
+    log("Uncaought error:" + e.stack);
+    //throw e;
 });
 

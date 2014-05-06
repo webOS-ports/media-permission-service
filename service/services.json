@@ -1,25 +1,25 @@
 {
-	"id": "com.palm.mediapermissions",
-	"description": "Request permission for media indexer database",
-	"engine": "node",
-	"activityTimeout": 30,
-	"services": [
-		{
-			"name": "com.palm.mediapermissions",
-			"description": "Request permission for media indexer database",
-			"globalized": false,
-			"commands": [
-				{
-					"name": "request",
-					"assistant": "RequestAssistant",
-					"public": true
-				},
+    "id": "com.palm.mediapermissions",
+    "description": "Request permission for media indexer database",
+    "engine": "node",
+    "activityTimeout": 30,
+    "services": [
+        {
+            "name": "com.palm.mediapermissions",
+            "description": "Request permission for media indexer database",
+            "globalized": false,
+            "commands": [
+                {
+                    "name": "request",
+                    "assistant": "RequestAssistant",
+                    "public": true
+                },
                 {
                     "name": "permissionsResponse",
                     "assistant": "ResponseAssistant",
                     "public": false
                 }
-			]
-		}
-	]
+            ]
+        }
+    ]
 }

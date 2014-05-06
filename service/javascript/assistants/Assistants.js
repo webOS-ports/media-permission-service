@@ -143,7 +143,7 @@ function callUI(appId, rights) {
 var RequestAssistant = function () {};
 
 RequestAssistant.prototype.run = function (outerfuture) {
-	var args = this.controller.args, future, appId, query, requiredRights, dbObj;
+    var args = this.controller.args, future, appId, query, requiredRights, dbObj;
 
     appId = getAppId(this.controller);
     if (!appId) {
@@ -178,7 +178,7 @@ RequestAssistant.prototype.run = function (outerfuture) {
                     dbObj = result.results[0];
                     future.result = {returnValue: true, rights: result.results[0].rights};
                 } else {
-                    throw "No or too many permissions for appId " + appId;
+                    throw "No or too many permission sets for appId " + appId;
                 }
             } else {
                 throw "DB lookup not successful " + printObj(future.exception);
@@ -255,7 +255,7 @@ RequestAssistant.prototype.run = function (outerfuture) {
         }
     });
 
-	return outerfuture;
+    return outerfuture;
 };
 
 RequestAssistant.prototype.quit = function () {
@@ -271,7 +271,7 @@ RequestAssistant.prototype.quit = function () {
 var ResponseAssistant = function () {};
 
 ResponseAssistant.prototype.run = function (outerfuture) {
-	var args = this.controller.args, sessionId, obj;
+    var args = this.controller.args, sessionId, obj;
 
     sessionId = args.sessionId;
 

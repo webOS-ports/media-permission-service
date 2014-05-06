@@ -1,20 +1,20 @@
 [
-	{
-		"library": {
-			"name": "foundations",
-			"version": "1.0"
-		}
-	},
-	{
-		"library": {
-			"name": "globalization",
-			"version": "1.0"
-		}
-	},
-	{
-		"source": "javascript/prologue.js"
-	},
-	{
-		"source": "javascript/assistants/Assistants.js"
-	}
+    {
+        "library": {
+            "name": "foundations",
+            "version": "1.0"
+        }
+    },
+    {
+        "library": {
+            "name": "globalization",
+            "version": "1.0"
+        }
+    },
+    {
+        "source": "javascript/prologue.js"
+    },
+    {
+        "source": "javascript/assistants/Assistants.js"
+    }
 ]
