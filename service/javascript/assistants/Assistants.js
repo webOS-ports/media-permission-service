@@ -160,6 +160,12 @@ RequestAssistant.prototype.run = function (outerfuture) {
                                                                          //rejects empty arrays, too, but I think that's fine.
         return fail("Require rights parameter with member read as string array containing kinds to request read access to.");
     }
+
+    //restrict granted rights to media stuff right now.
+    for (i = 0; i < args.rights.read.length; i += 1) {
+        if (args.rights.read[i] === "com.palm.media.permissions:1" || args.rights.read[i].indexOf("com.palm.media.") !== 0) {
+            return fail("Can not grant access to " + args.rights.read[i]);
+        }
     }
 
     query = {
