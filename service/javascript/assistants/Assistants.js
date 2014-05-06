@@ -57,7 +57,7 @@ function addPermissions(appId, kinds, index) {
     if (index >= kinds.read.length) {
         return new Future({returnValue: true});
     }
-    if (!kinds[index]) {
+    if (!kinds.read[index]) {
         return addPermissions(appId, kinds, index + 1);
     }
 
