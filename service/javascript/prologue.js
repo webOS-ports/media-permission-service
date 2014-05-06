@@ -7,8 +7,7 @@ console.error("Starting to load libraries");
 var Foundations = IMPORTS.foundations;
 var DB = Foundations.Data.DB;
 var Future = Foundations.Control.Future;
-
-//var PalmCall = Foundations.Comms.PalmCall;
+var PalmCall = Foundations.Comms.PalmCall;
 
 console.error("--------->Loaded Libraries OK1");
 
