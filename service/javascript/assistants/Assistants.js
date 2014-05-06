@@ -50,40 +50,19 @@ function getRequiredRights(granted, requested) {
 //adds permissions for all requested kinds.
 //if one call fails, it will abort and return falsy.
 //If all calls succeed, it will return truthy.
-function addPermissions(appId, kinds, index) {
-    if (!index) {
-        index = 0;
-    }
-    if (index >= kinds.read.length) {
-        return new Future({returnValue: true});
-    }
-    if (!kinds.read[index]) {
-        return addPermissions(appId, kinds, index + 1);
-    }
+function addPermissions(appId, kinds) {
+    var i, params = { permissions: [] }, future;
 
-    var future = PalmCall.call("palm://com.palm.db", "putPermissions", {
-        permissions: [{
+    for (i = 0; i < kinds.read.length; i += 1) {
+        params.permissions.push({
             type: 'db.kind',
-            object: kinds.read[index],
+            object: kinds.read[i],
             caller: appId,
             operations: {read: 'allow'}
-        }]
-    });
+        });
+    }
 
-    future.then(function palmCallCB() {
-        try {
-            var result = future.result;
-
-            if (result.returnValue === true) {
-                future.nest(addPermissions(appId, kinds, index + 1));
-            } else {
-                throw result;
-            }
-        } catch (e) {
-            log("Error in putPermissions: ", e);
-            future.result = { returnValue: false, reason: e };
-        }
-    });
+    future = PalmCall.call("palm://com.palm.db", "putPermissions", params);
 
     return future;
 }
