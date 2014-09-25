@@ -19,8 +19,20 @@ var printObj = function (obj, depth) {
         depth = 0;
     }
 
+    if (!obj) {
+        return undefined;
+    }
+
     if (typeof obj === "string") {
         return obj;
+    }
+
+    if (depth === 0) {
+        try {
+            return JSON.stringify(obj);
+        } catch (e) {
+            //stringify failed, need to dissect object a bit.
+        }
     }
 
     if (depth < 5) {

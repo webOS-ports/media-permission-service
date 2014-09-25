@@ -140,7 +140,7 @@ RequestAssistant.prototype.run = function (outerfuture) {
         return fail("Require rights parameter with member read as string array containing kinds to request read access to.");
     }
 
-    //restrict granted rights to media stuff right now.
+    //restrict granted rights to media stuff for now.
     for (i = 0; i < args.rights.read.length; i += 1) {
         if (args.rights.read[i] === "com.palm.media.permissions:1" || args.rights.read[i].indexOf("com.palm.media.") !== 0) {
             return fail("Can not grant access to " + args.rights.read[i]);
@@ -162,42 +162,60 @@ RequestAssistant.prototype.run = function (outerfuture) {
 
     future.then(function dbCallback() {
         try {
-            var result = future.result;
+            var result = future.result, ids = [], rights = {};
             if (result.returnValue === true) {
                 if (result.results.length === 1) {
                     dbObj = result.results[0];
                     future.result = {returnValue: true, rights: result.results[0].rights};
+                } else if (result.results.length === 0) {
+                    throw "No permission sets for appId " + appId;
                 } else {
-                    throw "No or too many permission sets for appId " + appId;
+                    result.results.forEach(function (obj) {
+                        ids.push(obj._id);
+                        if (obj.rights) {
+                            rights = getRequiredRights(rights, obj.rights); //deduplicate rights here
+                        }
+                    });
+                    DB.del(ids).then(function (f) {
+                        log("Deleted superflous permission sets: ", f.result);
+                    });
+
+                    log("WARNING: Multiple permission sets for appId " + appId);
+                    dbObj = {senderId: appId, _kind: "com.palm.media.permissions:1", rights: rights};
+                    future.result({returnValue: true, rights: rights});
                 }
             } else {
                 throw future.exception;
             }
 
         } catch (e) {
-            log("Could not get permissions from db. Reason: ", e);
+            log("Could not get permissions from db. Reason:", e);
             log("Continuing execution without lookup.");
             dbObj = {senderId: appId, _kind: "com.palm.media.permissions:1"};
-            future.result = { returnValue: false };
+            future.result = { returnValue: true, rights: {read: []} };
         }
     });
 
     future.then(function parseRights() {
         var result = future.result;
         //check if rights are already granted.
-        if (result.returnValue) {
-            requiredRights = getRequiredRights(result.rights, args.rights);
-            if (requiredRights.read.length === 0) {
-                log("All requested rights already granted.");
+        if (!result.rights) {
+            result.rights = { read: []};
+        }
+
+        requiredRights = getRequiredRights(result.rights, args.rights);
+        if (requiredRights.read.length === 0) {
+            log("All requested rights already granted.");
+
+            //put object nonetheless in order to handle multiple permission sets from above correctly.
+            DB.merge([dbObj]).then(function (f) {
+                log("Permissions stored: ", f.result);
+
                 outerfuture.result = { returnValue: true, isAllowed: true };
-            } else {
-                future.nest(callUI(appId, {read: requiredRights})); //this will block until ResponseAssistant is called with right id.
-                dbObj.rights = {read: result.rights.read.concat(requiredRights.read)};
-            }
+            });
         } else {
-            requiredRights = args.rights;
-            dbObj.rights = args.rights;
-            future.nest(callUI(appId, args.rights)); //this will block until ResponseAssistant is called with right id.
+            dbObj.rights = {read: result.rights.read.concat(requiredRights.read)};
+            future.nest(callUI(appId, {read: requiredRights})); //this will block our future until ResponseAssistant is called with right id.
         }
     });
 
