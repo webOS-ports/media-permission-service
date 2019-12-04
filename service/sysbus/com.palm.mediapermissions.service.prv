@@ -1,3 +1,0 @@
-[D-BUS Service]
-Name=com.palm.mediapermissions
-Exec=/usr/bin/run-js-service -n /usr/palm/services/com.palm.mediapermissions
