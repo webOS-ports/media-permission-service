@@ -1,0 +1,6 @@
+{
+    "services": [
+        "com.palm.mediapermissions/request",
+        "com.palm.mediapermissions/permissionsResponse"
+    ]
+}
