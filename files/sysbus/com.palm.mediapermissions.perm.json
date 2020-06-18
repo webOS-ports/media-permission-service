@@ -1,5 +1,8 @@
 {
     "com.palm.mediapermissions": [
-        "services"
+        "applications",
+        "services",
+        "database",
+        "database.internal"
     ]
 }
