@@ -1,6 +1,7 @@
 {
     "appId": "com.palm.mediapermissions",
     "allowedNames": ["com.palm.mediapermissions"],
+    "trustLevel": "oem",
     "type": "regular",
     "permissions": [
         {
