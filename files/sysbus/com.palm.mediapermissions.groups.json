@@ -1,0 +1,4 @@
+{
+ "allowedNames": ["com.palm.mediapermissions"],
+ "mediapermissions-service.operation": ["dev"]
+}
