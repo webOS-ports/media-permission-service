@@ -15,6 +15,9 @@
         "source": "javascript/prologue.js"
     },
     {
+        "source": "javascript/rules.js"
+    },
+    {
         "source": "javascript/assistants/Assistants.js"
     }
 ]
