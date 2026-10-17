@@ -1,275 +1,293 @@
 /*jslint sloppy: true, node: true, nomen: true */
-/*global Future, debug, log, printObj, DB, PalmCall */
+/*global Foundations, Future, log, printObj, DB, PalmCall, Rules, IMPORTS */
 
-// some auxilliary functions
-function getAppId(controller) {
-    "use strict";
-    var appId = controller.message.applicationID().split(" ")[0];
-    if (!appId) {
-        appId = controller.message.senderServiceName();
-    }
+/*
+ * request: an application asks to read media kinds (the user's music,
+ * pictures, videos and documents the media indexer lists). Every
+ * application may ask; the user's answer is what decides.
+ *
+ *   luna://com.palm.mediapermissions/request
+ *   {"rights": {"read": ["com.palm.media.video.file:1"]}}
+ *   -> {"returnValue": true, "isAllowed": true|false}
+ *
+ * Kinds the application may read already, because the user allowed them
+ * or db8's static grants list it (the built-in apps), are answered at once.
+ * For the others the user is asked, in the system's alert
+ * (com.webos.notification/createAlert, drawn by the shell); "Allow" makes the
+ * media indexer, which owns the kinds and is the only one db8 lets change
+ * who reads them, grant the application read access. The answers are kept
+ * in com.palm.media.permissions:1.
+ *
+ * So that an application cannot keep putting the question to the user:
+ * - it has at most one question open at a time; asking again meanwhile is
+ *   refused;
+ * - after "Don't Allow" it is answered "no" without asking for a day;
+ * - after a question that was closed or not answered, for ten minutes.
+ *
+ * permissionsResponse: the shell's call when a button is pressed. Only the
+ * shell may make it: the bus admits only holders of
+ * mediapermissions-service.response, and the sender must have the shell's
+ * name and run the shell's executable. It also needs the token of a
+ * question still open.
+ */
 
-    debug("AppId ", appId, " from ", controller.message.applicationID(), " && ", controller.message.senderServiceName());
+// Not "crypto": node 19 and later keep the WebCrypto object under that
+// global name, and assigning to it is silently ignored in sloppy mode.
+var nodeCrypto = IMPORTS.require("crypto");
+var fs = IMPORTS.require("fs");
 
-    return appId;
+// How long the question stays open; then it counts as closed.
+// Below the request's commandTimeout in services.json, so the caller hears
+// "no" from here rather than a timeout from the framework.
+var ASK_TIMEOUT_MS = 120000;
+
+var sessions = {};
+
+// The applications with a question open, by id.
+var asking = {};
+
+function call(uri, method, params) {
+    return PalmCall.call(uri, method, params);
 }
 
-function getRequiredRightsFromArrays(granted, requested) {
-    var i, j, found, required = [];
-    for (i = 0; i < requested.length; i += 1) {
-        found = false;
-        for (j = 0; j < granted.length; j += 1) {
-            if (requested[i] === granted[j]) {
-                found = true;
-                break;
+// The application's title, for the question; its id when there is none.
+function appTitle(appId) {
+    var future = call("luna://com.webos.service.applicationmanager", "getAppInfo", { id: appId }),
+        outer = new Future();
+    future.then(function () {
+        var title = appId, r;
+        try {
+            r = future.result;
+            if (r && r.appInfo && typeof r.appInfo.title === "string" && r.appInfo.title) {
+                title = r.appInfo.title;
             }
+        } catch (e) {
+            log("No title for ", appId, ": ", printObj(e));
         }
-
-        if (!found) {
-            required.push(requested[i]);
-        }
-    }
-
-    return required;
+        outer.result = { title: title };
+    });
+    return outer;
 }
 
-function getRequiredRights(granted, requested) {
-    var key, result = {};
-    for (key in requested) {
-        if (requested.hasOwnProperty(key)) {
-            if (granted[key]) {
-                result[key] = getRequiredRightsFromArrays(granted[key], requested[key]);
+function closeAlert(alertId) {
+    if (alertId) {
+        call("luna://com.webos.notification", "closeAlert", { alertId: alertId }).then(function (f) {
+            try {
+                return f.result;
+            } catch (e) {
+                log("Could not close the question: ", printObj(e));
+                return undefined;
             }
-        }
-    }
-
-    //found everything.
-    return result;
-}
-
-//adds permissions for all requested kinds.
-//if one call fails, it will abort and return falsy.
-//If all calls succeed, it will return truthy.
-function addPermissions(appId, kinds) {
-    var i, params = { permissions: [] }, future;
-
-    for (i = 0; i < kinds.read.length; i += 1) {
-        params.permissions.push({
-            type: 'db.kind',
-            object: kinds.read[i],
-            caller: appId,
-            operations: {read: 'allow'}
         });
     }
-
-    future = PalmCall.call("palm://com.palm.db", "putPermissions", params);
-
-    return future;
 }
 
-var currentMaxId = 0;
-var sessions = [];
+// answer: "allow", "deny", "dismiss" or "failed"
+function finishSession(sessionId, answer) {
+    var session = sessions[sessionId];
+    if (!session) {
+        return false;
+    }
+    delete sessions[sessionId];
+    clearTimeout(session.timer);
+    // The shell closes the alert when a button is pressed; one still up
+    // after a timeout would take a press that no longer counts.
+    if (answer === "dismiss") {
+        closeAlert(session.alertId);
+    }
+    session.future.result = { answer: answer };
+    return true;
+}
 
-function callUI(appId, rights) {
-    var uiFuture = PalmCall.call("palm://org.webosports.luna", "publishToSystemUI", {
-        event: "mediaFilePermissionRequest",
-        message: {
-            action: 'requestPermission',
-            rights: rights,
-            senderId: appId,
-            sessionId: currentMaxId,
-            replyTo: 'palm://com.palm.mediapermission/permissionsResponse'
-        }
-    }), outerFuture = new Future(), id = currentMaxId;
+// Asks the user; the future gets {answer: "allow"|"deny"|"dismiss"}, or
+// {answer: "failed"} when the user could not be asked.
+function askUser(appId, kinds) {
+    var outer = new Future(), sessionId = nodeCrypto.randomBytes(8).toString("hex"),
+        token = nodeCrypto.randomBytes(16).toString("hex"), titleFuture = appTitle(appId);
 
-    sessions[id] = {
-        appId: appId,
-        rights: rights,
-        future: outerFuture
-    };
+    sessions[sessionId] = { token: token, future: outer, alertId: null };
+    sessions[sessionId].timer = setTimeout(function () {
+        log("No answer for ", appId, " in time; not allowed.");
+        finishSession(sessionId, "dismiss");
+    }, ASK_TIMEOUT_MS);
 
-    uiFuture.then(function uiCallback() {
-        try {
-            var result = uiFuture.result;
-
-            //ok, what do we get from the request?? Don't really know.. hm.
-            //lets print and wait for response.
-            log("Result from publishToSystemUI call: ", result);
-
-        } catch (e) {
-            log("Error in UI call: ", e);
-            log("Waiking up request call with error.");
-
-            //work around for not yet existing UI part:
-            if (e.response && e.response.errorText && e.response.errorText.indexOf("Unknown method") === 0) {
-                log("UI Part not yet finished, emulating truthy result.");
-                PalmCall.call("palm://com.palm.mediapermissions", "permissionsResponse", {sessionId: id});
-            } else {
-                outerFuture.result = {returnValue: false};
+    titleFuture.then(function () {
+        var title = titleFuture.result.title, alertFuture, params = function (answer) {
+            return { sessionId: sessionId, token: token, answer: answer };
+        };
+        alertFuture = call("luna://com.webos.notification", "createAlert", {
+            title: "Media access",
+            message: title + " wants to read the " + Rules.describe(kinds) + " on this device.",
+            modal: true,
+            // buttonType: the shell draws "cancel" red and "ok" green
+            buttons: [
+                { label: "Don't Allow", buttonType: "cancel", focus: true,
+                  onclick: "luna://com.palm.mediapermissions/permissionsResponse", params: params("deny") },
+                { label: "Allow", buttonType: "ok",
+                  onclick: "luna://com.palm.mediapermissions/permissionsResponse", params: params("allow") }
+            ],
+            onclose: { uri: "luna://com.palm.mediapermissions/permissionsResponse", params: params("dismiss") }
+        });
+        alertFuture.then(function () {
+            var r;
+            try {
+                r = alertFuture.result;
+                if (sessions[sessionId]) {
+                    sessions[sessionId].alertId = r.alertId;
+                } else {
+                    closeAlert(r.alertId);
+                }
+            } catch (e) {
+                log("Could not ask the user: ", printObj(e));
+                finishSession(sessionId, "failed");
             }
-        }
+        });
     });
 
-    currentMaxId += 1;
-    return outerFuture;
+    return outer;
 }
 
-/* RequestAssistant reacts to requests from the app
- * If the UI is involved, responseAssistant is required, too.
- * This will halt and wait until the UI calls the responseAssistant
- * which then releases the request assistant to continue it's quest.
- */
+// Of kinds, those db8's static grants already let appId read: the
+// built-in apps are never asked.
+function readableAlready(appId, kinds) {
+    return kinds.filter(function (kind) {
+        var entries;
+        try {
+            entries = JSON.parse(fs.readFileSync(Rules.permissionsFile(kind), "utf8"));
+        } catch (e) {
+            return false;
+        }
+        return Rules.readableBy(entries, appId, kind);
+    });
+}
+
+function remember(record) {
+    DB.put([record]).then(function (f) {
+        try {
+            return f.result;
+        } catch (e) {
+            log("Could not remember the answer: ", printObj(e));
+            return undefined;
+        }
+    });
+}
+
 var RequestAssistant = function () {};
 
 RequestAssistant.prototype.run = function (outerfuture) {
-    var args = this.controller.args, future, appId, query, requiredRights, dbObj, i;
+    var args = this.controller.args, message = this.controller.message, appId, wanted, record,
+        future, granted = [], missing;
 
+    // The framework answers {returnValue: false, errorCode, errorText}
     function fail(reason) {
-        log("Failing because: ", reason);
-        outerfuture.result = { returnValue: false, isAllowed: false, reason: reason};
+        log("Request refused: ", reason);
+        outerfuture.setException(Foundations.Err.create(-1, reason));
         return outerfuture;
     }
 
-    appId = getAppId(this.controller);
+    appId = Rules.callerAppId(message.applicationID && message.applicationID(),
+                              message.senderServiceName && message.senderServiceName());
     if (!appId) {
-        return fail("Could not determine appId.");
+        return fail("Could not tell which application is asking.");
     }
-
-    if (!args.rights || !args.rights.read || !args.rights.read.length) { //kind of hack here, just check for length field in array.
-                                                                         //rejects empty arrays, too, but I think that's fine.
-        return fail("Require rights parameter with member read as string array containing kinds to request read access to.");
+    wanted = Rules.requestedKinds(args && args.rights);
+    if (wanted.error) {
+        return fail(wanted.error);
     }
+    wanted = wanted.kinds;
 
-    //restrict granted rights to media stuff right now.
-    for (i = 0; i < args.rights.read.length; i += 1) {
-        if (args.rights.read[i] === "com.palm.media.permissions:1" || args.rights.read[i].indexOf("com.palm.media.") !== 0) {
-            return fail("Can not grant access to " + args.rights.read[i]);
-        }
-    }
+    future = DB.find({ from: "com.palm.media.permissions:1", where: [{ prop: "senderId", op: "=", val: appId }] }, false, false);
 
-    query = {
-        from: "com.palm.media.permissions:1",
-        where: [
-            {
-                prop: "senderId",
-                op: "=",
-                val: appId
-            }
-        ]
-    };
-
-    future = DB.find(query, false, false);
-
-    future.then(function dbCallback() {
+    future.then(function lookedUp() {
+        var r;
         try {
-            var result = future.result;
-            if (result.returnValue === true) {
-                if (result.results.length === 1) {
-                    dbObj = result.results[0];
-                    future.result = {returnValue: true, rights: result.results[0].rights};
-                } else {
-                    throw "No or too many permission sets for appId " + appId;
-                }
-            } else {
-                throw future.exception;
-            }
-
-        } catch (e) {
-            log("Could not get permissions from db. Reason: ", e);
-            log("Continuing execution without lookup.");
-            dbObj = {senderId: appId, _kind: "com.palm.media.permissions:1"};
-            future.result = { returnValue: false };
-        }
-    });
-
-    future.then(function parseRights() {
-        var result = future.result;
-        //check if rights are already granted.
-        if (result.returnValue) {
-            requiredRights = getRequiredRights(result.rights, args.rights);
-            if (requiredRights.read.length === 0) {
-                log("All requested rights already granted.");
-                outerfuture.result = { returnValue: true, isAllowed: true };
-            } else {
-                future.nest(callUI(appId, {read: requiredRights})); //this will block until ResponseAssistant is called with right id.
-                dbObj.rights = {read: result.rights.read.concat(requiredRights.read)};
-            }
-        } else {
-            requiredRights = args.rights;
-            dbObj.rights = args.rights;
-            future.nest(callUI(appId, args.rights)); //this will block until ResponseAssistant is called with right id.
-        }
-    });
-
-    future.then(function systemUICB() {
-        try {
-            var result = future.result;
-            if (result.returnValue === true) {
-                //ok, now add permissions for all requested kinds.
-                future.nest(addPermissions(appId, requiredRights));
-            } else {
-                throw result.reason || "User denied access.";
+            r = future.result;
+            if (r.returnValue === true && r.results.length > 0) {
+                record = r.results[0];
+                granted = record.rights && Array.isArray(record.rights.read) ? record.rights.read : [];
             }
         } catch (e) {
-            fail("Asking user for permission failed: " + printObj(e));
+            log("Could not read the answers given before: ", printObj(e));
         }
+        if (!record) {
+            record = { _kind: "com.palm.media.permissions:1", senderId: appId };
+        }
+        missing = Rules.missing(granted.concat(readableAlready(appId, wanted)), wanted);
+        if (missing.length === 0) {
+            outerfuture.result = { returnValue: true, isAllowed: true };
+            return;
+        }
+        if (Rules.refusedRecently(record.refused, missing, Date.now())) {
+            outerfuture.result = { returnValue: true, isAllowed: false };
+            return;
+        }
+        if (asking[appId]) {
+            fail("A question for this application is already open.");
+            return;
+        }
+        asking[appId] = true;
+        future.nest(askUser(appId, missing));
     });
 
-    future.then(function permissionsCB() {
-        try {
-            var result = future.result;
-            if (result.returnValue === true) {
-                //ok, all permissions where set ok. Continue. :)
-                future.nest(DB.merge([dbObj]));
-            } else {
-                throw result;
-            }
-        } catch (e) {
-            fail("Error during setting permissions " + printObj(e));
+    future.then(function answered() {
+        var answer = future.result.answer;
+        delete asking[appId];
+        if (answer === "allow") {
+            future.nest(call("luna://org.webosports.service.mediaindexer", "grantRead", { appId: appId, kinds: missing }));
+            return;
         }
+        if (answer === "deny" || answer === "dismiss") {
+            record.refused = Rules.refuse(record.refused, missing, answer, Date.now());
+            remember(record);
+        }
+        outerfuture.result = { returnValue: true, isAllowed: false };
     });
 
-    future.then(function dbCB() {
+    future.then(function grantedByIndexer() {
         try {
-            var result = future.result;
-            if (result.returnValue === true) {
-                outerfuture.result = {returnValue: true, isAllowed: true }; //finally. :)
-            } else {
-                throw result;
-            }
+            future.getResult();
         } catch (e) {
-            fail("Error during remembering permissions: " + printObj(e));
+            fail("The media indexer could not grant access: " + printObj(e));
+            return;
         }
+        record.rights = { read: granted.concat(missing) };
+        record.refused = Rules.forget(record.refused, missing);
+        future.nest(DB.put([record]));
+    });
+
+    future.then(function remembered() {
+        try {
+            future.getResult();
+        } catch (e) {
+            // Granted all the same; db8 keeps the grant itself.
+            log("Could not remember the answer: ", printObj(e));
+        }
+        outerfuture.result = { returnValue: true, isAllowed: true };
     });
 
     return outerfuture;
 };
 
-RequestAssistant.prototype.quit = function () {
-    var key;
-    log("Service will be killed because it idled too long. Abort pending sessions with error message.");
-    for (key in sessions) {
-        if (sessions.hasOwnProperty(key) && sessions[key].future) {
-            sessions[key].future.result = { returnValue: false, reason: "Idle timeout."};
-        }
-    }
-};
-
 var ResponseAssistant = function () {};
 
 ResponseAssistant.prototype.run = function (outerfuture) {
-    var args = this.controller.args, sessionId, obj;
+    var args = this.controller.args || {}, message = this.controller.message, session,
+        sender = message.senderServiceName && message.senderServiceName(),
+        // Absent from a palmbus without senderExePath(): then nobody passes.
+        exe = message.senderExePath && message.senderExePath();
 
-    sessionId = args.sessionId;
-
-    obj = sessions[sessionId];
-    delete sessions[sessionId];
-    if (obj) {
-        obj.future.result = { returnValue: true, isAllowed: args.isSenderPermitted };
-    } else {
-        log("Error: No session for ", sessionId, " stored. Can't continue.");
+    if (!Rules.isShell(sender, exe)) {
+        log("permissionsResponse refused from ", sender, " (", exe, ")");
+        outerfuture.setException(Foundations.Err.create(-1, "Only the system shell may answer."));
+        return outerfuture;
     }
-
+    session = typeof args.sessionId === "string" ? sessions[args.sessionId] : undefined;
+    if (!session || typeof args.token !== "string" || args.token !== session.token ||
+            !Rules.isAnswer(args.answer)) {
+        outerfuture.setException(Foundations.Err.create(-1, "No such question."));
+        return outerfuture;
+    }
+    finishSession(args.sessionId, args.answer);
     outerfuture.result = { returnValue: true };
     return outerfuture;
 };

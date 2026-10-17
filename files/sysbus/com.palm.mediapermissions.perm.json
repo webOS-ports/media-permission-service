@@ -1,6 +1,10 @@
 {
     "com.palm.mediapermissions": [
-        "mediapermissions-service.operation",
-        "database.operation"
+        "activity.operation",
+        "application.operation",
+        "database.operation",
+        "mediaindexer.permissions",
+        "notification.management",
+        "notification.operation"
     ]
 }

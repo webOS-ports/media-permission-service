@@ -12,7 +12,8 @@
                 {
                     "name": "request",
                     "assistant": "RequestAssistant",
-                    "public": true
+                    "public": true,
+                    "commandTimeout": 180
                 },
                 {
                     "name": "permissionsResponse",

@@ -1,6 +1,8 @@
 {
     "mediapermissions-service.operation": [
-        "com.palm.mediapermissions/request",
+        "com.palm.mediapermissions/request"
+    ],
+    "mediapermissions-service.response": [
         "com.palm.mediapermissions/permissionsResponse"
     ]
 }
