@@ -97,6 +97,10 @@ code, tests and commits refer to them by these numbers:
   so it could put the question again at once, and, for an application with
   no record yet, write a second record for it; only one of the two was read
   after that, so it was asked again for kinds it had been granted.
+  Mended: the question stays open until the grant and the answer are
+  written; those two calls now give up after a minute, so that one that
+  never returns cannot keep it open for good (the old service waited
+  without end, and answered 504 after 180 s).
 - B3: when db8 could not be read, the request went on as if the user had
   never answered: an application told "no" for a day was asked again, and
   the answer was written as a second record.

@@ -9,13 +9,14 @@
 	timeout, and a reply that has returnValue:false, an errorCode or an
 	errorText is a failure: Err.create(its errorCode or -1, "<url> <args>:
 	<its errorText, or Unknown PalmCall failure>", its exception), with
-	the reply as .response.
+	the reply as .response. opts.timeoutMs: give up after that long, failing
+	as a call the bus could not make; none by default.
 */
 
 const {errCreate} = require('./mojo');
 
 function createPalmCall(bus) {
-	return async function palmCall(uri, method, args) {
+	return async function palmCall(uri, method, args, {timeoutMs = 0} = {}) {
 		let url = uri;
 		if (method.length > 0) {
 			if (url.charAt(url.length - 1) !== '/') {
@@ -25,7 +26,7 @@ function createPalmCall(bus) {
 		}
 		let payload;
 		try {
-			payload = await bus.call(url, args, {raw: true, timeoutMs: 0});
+			payload = await bus.call(url, args, {raw: true, timeoutMs});
 		} catch (e) {
 			// No reply to read: a bad one, or the call could not be made.
 			throw errCreate(-1, url + ' ' + JSON.stringify(args) + ': ' + ((e && e.errorText) || (e && e.message) || e));

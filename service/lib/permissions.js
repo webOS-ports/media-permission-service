@@ -50,6 +50,11 @@ const SELF = 'luna://com.palm.mediapermissions/permissionsResponse';
 // here rather than a timeout.
 const ASK_TIMEOUT_MS = 120000;
 
+// How long the grant and the record of an answer may take: the question
+// stays open until they are done (B2), so a call that never returns must
+// not keep it open for good. The old service waited without end.
+const APPLY_TIMEOUT_MS = 60000;
+
 /*
 	The old service's printObj(obj): its own enumerable keys, each as JSON,
 	in "{ key: value," form. It never closes the brace (it assigns to a
@@ -189,8 +194,9 @@ function createPermissions({call, log = console}) {
 		});
 	}
 
+	// -> when the answer is written, or could not be.
 	function remember(record) {
-		call('palm://com.palm.db/', 'put', {objects: [record]}).catch(e => {
+		return call('palm://com.palm.db/', 'put', {objects: [record]}, {timeoutMs: APPLY_TIMEOUT_MS}).catch(e => {
 			logError('Could not remember the answer: ', printObj(e));
 		});
 	}
@@ -237,19 +243,35 @@ function createPermissions({call, log = console}) {
 		if (asking[appId]) {
 			throw fail('A question for this application is already open.');
 		}
+		// The question counts as open until its answer is applied, written
+		// too: a request in between would read the answers from before it
+		// (B2). A "no" is still answered at once, as before.
 		asking[appId] = true;
-		const answer = await askUser(appId, missing);
-		delete asking[appId];
-		if (answer !== 'allow') {
-			if (answer === 'deny' || answer === 'dismiss') {
-				record.refused = Rules.refuse(record.refused, missing, answer, Date.now());
-				remember(record);
-			}
-			return {returnValue: true, isAllowed: false};
-		}
-
+		let release = () => {
+			delete asking[appId];
+		};
 		try {
-			await call('luna://org.webosports.service.mediaindexer', 'grantRead', {appId, kinds: missing});
+			const answer = await askUser(appId, missing);
+			if (answer !== 'allow') {
+				if (answer === 'deny' || answer === 'dismiss') {
+					record.refused = Rules.refuse(record.refused, missing, answer, Date.now());
+					remember(record).then(release);
+					release = null;
+				}
+				return {returnValue: true, isAllowed: false};
+			}
+			return await grant(appId, record, granted, missing);
+		} finally {
+			if (release) {
+				release();
+			}
+		}
+	}
+
+	async function grant(appId, record, granted, missing) {
+		try {
+			await call('luna://org.webosports.service.mediaindexer', 'grantRead', {appId, kinds: missing},
+				{timeoutMs: APPLY_TIMEOUT_MS});
 		} catch (e) {
 			// The reason: PalmCall's "<url> <args>: <the indexer's errorText>" (B1).
 			throw fail('The media indexer could not grant access: ' + e.message);
@@ -257,7 +279,7 @@ function createPermissions({call, log = console}) {
 		record.rights = {read: granted.concat(missing)};
 		record.refused = Rules.forget(record.refused, missing);
 		try {
-			await call('palm://com.palm.db/', 'put', {objects: [record]});
+			await call('palm://com.palm.db/', 'put', {objects: [record]}, {timeoutMs: APPLY_TIMEOUT_MS});
 		} catch (e) {
 			// Granted all the same; db8 keeps the grant itself.
 			logError('Could not remember the answer: ', printObj(e));

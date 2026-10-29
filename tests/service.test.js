@@ -347,9 +347,8 @@ test('a grant that cannot be remembered is still allowed', async t => {
 });
 
 test('a request still running after 180 s is answered 504, as mojoservice did', async t => {
-	const w = world(t, {bus: {'org.webosports.service.mediaindexer/grantRead': () => undefined}});
+	const w = world(t, {bus: {'com.palm.db/find': () => undefined}});
 	const a = await w.ask();
-	await w.press('allow');
 	t.mock.timers.tick(180000 - 1);
 	await w.settle();
 	assert.strictEqual(a.value, undefined);
@@ -358,4 +357,61 @@ test('a request still running after 180 s is answered 504, as mojoservice did', 
 	assert.strictEqual(a.value.returnValue, false);
 	assert.strictEqual(a.value.errorCode, 504);
 	assert.strictEqual(a.value.errorText, 'commandTimeout in com.palm.mediapermissions/request');
+});
+
+test('B2: the question stays open until the grant is written', async t => {
+	let letGrant = null;
+	const w = world(t, {bus: {'org.webosports.service.mediaindexer/grantRead': () =>
+		new Promise(resolve => {
+			letGrant = () => resolve({returnValue: true});
+		})}});
+	const first = await w.ask('org.example.app', [video]);
+	await w.press('allow');
+	assert.strictEqual(first.value, undefined, 'the grant is still being made');
+	// Meanwhile the app asks for another kind: not a second question at once.
+	const second = await w.ask('org.example.app', [audio]);
+	assert.strictEqual(alerts(w), 1);
+	assert.strictEqual(second.value.errorText, 'A question for this application is already open.');
+	letGrant();
+	await w.settle();
+	assert.deepStrictEqual(first.value, {returnValue: true, isAllowed: true});
+	// Then asked, and the answer added to the one record.
+	await w.ask('org.example.app', [audio]);
+	await w.press('allow');
+	letGrant();
+	await w.settle();
+	assert.strictEqual(w.db.filter(r => r.senderId === 'org.example.app').length, 1);
+	assert.deepStrictEqual(w.db[0].rights.read, [video, audio]);
+});
+
+test('B2: the question stays open until a "Don\'t Allow" is written', async t => {
+	let letPut = null;
+	const w = world(t, {bus: {'com.palm.db/put': (args, world_) => new Promise(resolve => {
+		letPut = () => {
+			world_.db = world_.db.concat(args.objects.map(o => Object.assign({_id: 'P1'}, JSON.parse(JSON.stringify(o)))));
+			resolve({returnValue: true});
+		};
+	})}});
+	const first = await w.ask();
+	await w.press('deny');
+	const second = await w.ask();
+	assert.strictEqual(alerts(w), 1, 'not asked again before the no is written');
+	assert.strictEqual(second.value.returnValue, false);
+	letPut();
+	await w.settle();
+	assert.deepStrictEqual(first.value, {returnValue: true, isAllowed: false});
+	assert.deepStrictEqual((await w.ask()).value, {returnValue: true, isAllowed: false});
+	assert.strictEqual(alerts(w), 1);
+});
+
+test('B2: a grant that never comes frees the question after a minute', async t => {
+	const w = world(t, {bus: {'org.webosports.service.mediaindexer/grantRead': () => undefined}});
+	const a = await w.ask();
+	await w.press('allow');
+	t.mock.timers.tick(60000);
+	await w.settle();
+	assert.strictEqual(a.value.returnValue, false);
+	assert.ok(/^The media indexer could not grant access: /.test(a.value.errorText));
+	await w.ask();
+	assert.strictEqual(alerts(w), 2, 'may be asked again');
 });
