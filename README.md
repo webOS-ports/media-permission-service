@@ -3,6 +3,21 @@ Summary
 
 Node.js service to ask for permission to media indexer database.
 
+The service is plain Node 22, for the launcher's plain-node path
+(`run-js-service` requires `service/`, as it has a `package.json`, and calls
+`run()`). It used to run on mojoservice and the Foundations library; neither
+is loaded any more. The old `sources.json` also loaded globalization, but
+nothing used it: the question's text was, and is, English.
+
+| | |
+|---|---|
+| `service/service.js` | start-up: the bus, the two methods and their timeouts |
+| `service/lib/permissions.js` | `request` and `permissionsResponse` |
+| `service/lib/rules.js` | what may be asked for, who may answer, the quiet times, the question's wording |
+| `service/lib/mojo.js` | replies and errors as mojoservice gave them |
+| `service/lib/palmcall.js` | bus calls failing as Foundations' `PalmCall` failed |
+| `service/lib/bus.js`, `errors.js` | the luna bus through palmbus, from the messaging service by way of the contacts linker |
+
 How it works
 ============
 
@@ -42,7 +57,7 @@ An application cannot keep putting the question to the user:
 - after "Don't Allow" it is answered no, without asking, for a day;
 - after a question that was closed or not answered, for ten minutes.
 
-Only the kinds in `service/javascript/rules.js` can be asked for.
+Only the kinds in `service/lib/rules.js` can be asked for.
 
 Only the shell may answer. `permissionsResponse` is in its own `oem` group,
 which only the shell holds. The service also checks that the sender has
@@ -59,11 +74,55 @@ no answer is accepted.
 The buttons use notificationmgr's `buttonType`: the shell draws "cancel"
 (Don't Allow) red and "ok" (Allow) green.
 
+The rewrite
+===========
+
+The first Node version makes the same decisions, the same calls with the
+same arguments and gives the same replies as the mojoservice service,
+including its bugs. That was checked by an A/B test: the old service run
+unchanged on the host, on the frameworks of a LuneOS VM, next to the new
+one, on generated scenarios and on every caller, kind list and ending,
+comparing every reply, every bus call and db8 after each step. The bugs
+are mended one commit at a time after that, each with its own test; the
+code, tests and commits refer to them by these numbers:
+
+- B1: when the media indexer refused a grant, the error text was the old
+  `printObj()` of the error: its `errorCode`, `innerError: undefined`,
+  `toString: undefined` and the indexer's reply, without the reason and
+  with the brace never closed.
+- B2: an application's question counted as open only until the user
+  answered, not until the answer was applied. A request in between read
+  the answers kept from before the grant or the "Don't Allow" was written,
+  so it could put the question again at once, and, for an application with
+  no record yet, write a second record for it; only one of the two was read
+  after that, so it was asked again for kinds it had been granted.
+- B3: when db8 could not be read, the request went on as if the user had
+  never answered: an application told "no" for a day was asked again, and
+  the answer was written as a second record.
+- B4: a question the user was never shown counted as closed. When the
+  application manager or the notification manager did not answer within
+  the two minutes, the application was told "no" for ten minutes without a
+  question having appeared; and when the application's title came in
+  later, the alert was put up after the request had been answered, and
+  taken down again.
+
+These things deliberately differ from the old service:
+
+- mojoservice made an activity for every call (activitymanager/create
+  `request_<n>`, completed with the reply), and took on an `$activity` a
+  call brought. Nothing calls this service with one, and its own work needs
+  none, so neither is done.
+- mojoservice's `__info`, `__quit` and `__gc` methods are gone; `bus.js`
+  answers `info` and `quit`, as in the messaging service and the linker.
+- It quits 30 s after its last call is done, as `activityTimeout` made
+  mojoservice do.
+
 Tests
 =====
 
-    node tests/rules-test.js
-    node tests/assistants-test.js
+    tests/run.sh
 
-These run on the build host with plain node. The second one loads the
-service's sources with the bus, db8 and the clock replaced by fakes.
+This runs the unit tests (`node --test tests/*.test.js`) over the service on a
+stand-in bus with db8 in memory and the test's clock, then jshint (set
+`JSHINT` if it is not on the path) and a parse of every module. They run on
+the build host with plain node.
