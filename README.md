@@ -103,7 +103,8 @@ code, tests and commits refer to them by these numbers:
   without end, and answered 504 after 180 s).
 - B3: when db8 could not be read, the request went on as if the user had
   never answered: an application told "no" for a day was asked again, and
-  the answer was written as a second record.
+  the answer was written as a second record. Mended: the request fails,
+  "Could not read the answers given before.", and nobody is asked.
 - B4: a question the user was never shown counted as closed. When the
   application manager or the notification manager did not answer within
   the two minutes, the application was told "no" for ten minutes without a

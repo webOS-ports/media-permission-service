@@ -415,3 +415,12 @@ test('B2: a grant that never comes frees the question after a minute', async t =
 	await w.ask();
 	assert.strictEqual(alerts(w), 2, 'may be asked again');
 });
+
+test('B3: answers that cannot be read are not taken for none', async t => {
+	const w = world(t, {dbReadFails: true, records: [{_id: '1', senderId: 'org.example.app', refused: [{kind: video, until: T0 + DAY}]}]});
+	const a = await w.ask();
+	assert.strictEqual(alerts(w), 0, 'not asked');
+	assert.strictEqual(a.value.returnValue, false);
+	assert.strictEqual(a.value.errorText, 'Could not read the answers given before.');
+	assert.strictEqual(w.named('com.palm.db/put').length, 0, 'no second record');
+});

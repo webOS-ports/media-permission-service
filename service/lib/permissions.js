@@ -229,6 +229,9 @@ function createPermissions({call, log = console}) {
 			}
 		} catch (e) {
 			logError('Could not read the answers given before: ', printObj(e));
+			// Not taken for none: that would put a question the user said
+			// "no" to again, and write a second record (B3).
+			throw fail('Could not read the answers given before.');
 		}
 		if (!record) {
 			record = {_kind: KIND, senderId: appId};
