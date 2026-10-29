@@ -54,7 +54,8 @@ const ASK_TIMEOUT_MS = 120000;
 	The old service's printObj(obj): its own enumerable keys, each as JSON,
 	in "{ key: value," form. It never closes the brace (it assigns to a
 	character of a string), and a value JSON leaves out shows as
-	"undefined". Kept for the error text it makes (README: B1).
+	"undefined". Kept for the log lines, as they were; no reply carries it
+	(README: B1).
 */
 function printObj(obj, depth) {
 	let msg = '{';
@@ -250,7 +251,8 @@ function createPermissions({call, log = console}) {
 		try {
 			await call('luna://org.webosports.service.mediaindexer', 'grantRead', {appId, kinds: missing});
 		} catch (e) {
-			throw fail('The media indexer could not grant access: ' + printObj(e));
+			// The reason: PalmCall's "<url> <args>: <the indexer's errorText>" (B1).
+			throw fail('The media indexer could not grant access: ' + e.message);
 		}
 		record.rights = {read: granted.concat(missing)};
 		record.refused = Rules.forget(record.refused, missing);

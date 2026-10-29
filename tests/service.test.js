@@ -331,7 +331,9 @@ test('a refused grant is not reported as allowed', async t => {
 	await w.press('allow');
 	assert.strictEqual(a.value.returnValue, false);
 	assert.strictEqual(a.value.errorCode, -1);
-	assert.ok(/^The media indexer could not grant access: /.test(a.value.errorText), a.value.errorText);
+	// B1: the reason, not the old printObj() of the error
+	assert.strictEqual(a.value.errorText, 'The media indexer could not grant access: ' +
+		'luna://org.webosports.service.mediaindexer/grantRead {"appId":"org.example.app","kinds":["' + video + '"]}: denied');
 	assert.strictEqual(w.db.length, 0);
 	await w.ask();
 	assert.strictEqual(alerts(w), 2, 'free to ask again');

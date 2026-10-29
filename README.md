@@ -89,7 +89,8 @@ code, tests and commits refer to them by these numbers:
 - B1: when the media indexer refused a grant, the error text was the old
   `printObj()` of the error: its `errorCode`, `innerError: undefined`,
   `toString: undefined` and the indexer's reply, without the reason and
-  with the brace never closed.
+  with the brace never closed. Mended: the text ends in the indexer's
+  reason.
 - B2: an application's question counted as open only until the user
   answered, not until the answer was applied. A request in between read
   the answers kept from before the grant or the "Don't Allow" was written,
