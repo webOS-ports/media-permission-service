@@ -110,7 +110,10 @@ code, tests and commits refer to them by these numbers:
   the two minutes, the application was told "no" for ten minutes without a
   question having appeared; and when the application's title came in
   later, the alert was put up after the request had been answered, and
-  taken down again.
+  taken down again. Mended: a question the notification manager has not
+  said it put up counts, when its time is over, as one that could not be
+  asked (no, and nothing remembered), and a title that comes after that
+  puts up nothing. An alert that comes up late is still taken down.
 
 These things deliberately differ from the old service:
 

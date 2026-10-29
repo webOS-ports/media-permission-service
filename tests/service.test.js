@@ -424,3 +424,41 @@ test('B3: answers that cannot be read are not taken for none', async t => {
 	assert.strictEqual(a.value.errorText, 'Could not read the answers given before.');
 	assert.strictEqual(w.named('com.palm.db/put').length, 0, 'no second record');
 });
+
+test('B4: a question never shown is not remembered as closed', async t => {
+	const w = world(t, {bus: {'com.webos.service.applicationmanager/getAppInfo': () => undefined}});
+	const a = await w.ask();
+	t.mock.timers.tick(120000);
+	await w.settle();
+	assert.deepStrictEqual(a.value, {returnValue: true, isAllowed: false});
+	assert.strictEqual(alerts(w), 0);
+	assert.strictEqual(w.db.length, 0, 'no quiet time');
+});
+
+test('B4: an alert that never answered is not remembered as closed, and goes when it does', async t => {
+	let shown = null;
+	const w = world(t, {bus: {'com.webos.notification/createAlert': () => new Promise(resolve => {
+		shown = () => resolve({returnValue: true, alertId: 'late'});
+	})}});
+	const a = await w.ask();
+	t.mock.timers.tick(120000);
+	await w.settle();
+	assert.deepStrictEqual(a.value, {returnValue: true, isAllowed: false});
+	assert.strictEqual(w.db.length, 0);
+	shown();
+	await w.settle();
+	assert.deepStrictEqual(w.named('com.webos.notification/closeAlert')[0].params, {alertId: 'late'});
+});
+
+test('B4: a title that comes after the question ended puts up no alert', async t => {
+	let titled = null;
+	const w = world(t, {bus: {'com.webos.service.applicationmanager/getAppInfo': () => new Promise(resolve => {
+		titled = () => resolve({returnValue: true, appInfo: {title: 'Late'}});
+	})}});
+	await w.ask();
+	t.mock.timers.tick(120000);
+	await w.settle();
+	titled();
+	await w.settle();
+	assert.strictEqual(alerts(w), 0);
+});

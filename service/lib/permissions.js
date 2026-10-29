@@ -144,14 +144,21 @@ function createPermissions({call, log = console}) {
 		const token = nodeCrypto.randomBytes(16).toString('hex');
 		const titled = appTitle(appId);
 		const answered = new Promise(resolve => {
-			sessions[sessionId] = {token, resolve, alertId: null};
+			sessions[sessionId] = {token, resolve, alertId: null, shown: false};
 		});
 		sessions[sessionId].timer = setTimeout(() => {
-			logError('No answer for ', appId, ' in time; not allowed.');
-			finishSession(sessionId, 'dismiss');
+			// A question the notification manager never said it put up was
+			// not seen: no answer of the user's, so none is remembered (B4).
+			const seen = sessions[sessionId] && sessions[sessionId].shown;
+			logError('No answer for ', appId, ' in time; not allowed', seen ? '.' : ' (the question was not shown).');
+			finishSession(sessionId, seen ? 'dismiss' : 'failed');
 		}, ASK_TIMEOUT_MS);
 
 		titled.then(async title => {
+			// The question is over (the title came too late): put up nothing (B4).
+			if (!sessions[sessionId]) {
+				return;
+			}
 			const params = answer => ({sessionId, token, answer});
 			let r;
 			try {
@@ -173,6 +180,7 @@ function createPermissions({call, log = console}) {
 			}
 			if (sessions[sessionId]) {
 				sessions[sessionId].alertId = r.alertId;
+				sessions[sessionId].shown = true;
 			} else {
 				closeAlert(r.alertId);
 			}
