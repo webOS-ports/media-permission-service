@@ -1,0 +1,9 @@
+{
+	"name": "com.palm.mediapermissions",
+	"version": "1.0.0",
+	"description": "Asks the user before an application may read the media indexer's kinds",
+	"main": "service.js",
+	"private": true,
+	"engines": { "node": ">=22" },
+	"license": "GPL-3.0-or-later"
+}

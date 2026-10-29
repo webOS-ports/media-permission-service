@@ -1,7 +1,10 @@
-/*jslint sloppy: true, node: true */
+// Copyright (c) 2026 Herman van Hazendonk
+// SPDX-License-Identifier: GPL-3.0-or-later
 
 // What may be asked for and who may answer: plain functions over plain
-// values, loaded by the service and by the tests (tests/rules-test.js).
+// values, loaded by the service and by the tests (tests/rules.test.js).
+
+'use strict';
 
 var Rules = {
     // The media kinds the indexer owns and can grant read access to
@@ -173,6 +176,4 @@ var Rules = {
     }
 };
 
-if (typeof module !== "undefined" && module.exports) {
-    module.exports = Rules;
-}
+module.exports = Rules;
