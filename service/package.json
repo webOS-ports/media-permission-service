@@ -5,5 +5,5 @@
 	"main": "service.js",
 	"private": true,
 	"engines": { "node": ">=22" },
-	"license": "GPL-3.0-only"
+	"license": "GPL-3.0-or-later"
 }

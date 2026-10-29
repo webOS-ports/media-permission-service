@@ -135,3 +135,23 @@ This runs the unit tests (`node --test tests/*.test.js`) over the service on a
 stand-in bus with db8 in memory and the test's clock, then jshint (set
 `JSHINT` if it is not on the path) and a parse of every module. They run on
 the build host with plain node.
+
+License
+=======
+
+    Copyright (c) 2026 Herman van Hazendonk
+
+The service is licensed under the GNU General Public License, version 3
+or (at your option) any later version: see LICENSE.txt. The old service it
+was rewritten from was GPL-3.0 too; its files carried no copyright line,
+and git names Achim Königs (2014) and Herman van Hazendonk (2026) as the
+authors of the parts `service/lib/permissions.js` is ported from.
+
+`service/lib/mojo.js` and `service/lib/palmcall.js` reproduce the replies
+and errors of mojoservice and Foundations, and say so in their headers.
+That code is
+
+    Copyright (c) 2009-2012 Hewlett-Packard Development Company, L.P.
+
+licensed under the Apache License, Version 2.0 (LICENSE.Apache-2.0), which
+allows it to be part of a GPL-3.0 work.

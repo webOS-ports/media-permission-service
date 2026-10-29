@@ -1,5 +1,9 @@
 // Copyright (c) 2026 Herman van Hazendonk
-// SPDX-License-Identifier: GPL-3.0-only
+// Ported from the old service's javascript/assistants/Assistants.js and
+// javascript/prologue.js (this repository, GPL-3.0), which carried no
+// copyright line; git names Achim Königs (2014) and Herman van Hazendonk
+// (2026) as their authors.
+// SPDX-License-Identifier: GPL-3.0-or-later
 
 'use strict';
 

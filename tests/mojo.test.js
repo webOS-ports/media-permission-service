@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Herman van Hazendonk
-// SPDX-License-Identifier: GPL-3.0-only
+// SPDX-License-Identifier: GPL-3.0-or-later
 
 // node --test tests/*.test.js (or tests/run.sh)
 
